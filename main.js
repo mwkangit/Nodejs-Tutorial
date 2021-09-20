@@ -3,7 +3,7 @@ var fs = require('fs');
 var url = require('url');
 var qs = require('querystring');
 
-function templateHTML(title, list, body){
+function templateHTML(title, list, body, control){
   return `
 <!doctype html>
 <html>
@@ -14,7 +14,7 @@ function templateHTML(title, list, body){
 <body>
   <h1><a href="/">WEB</a></h1>
   ${list}
-  <a href="/create">create</a>
+  ${control}
   ${body}
 </body>
 </html>
@@ -68,7 +68,10 @@ var app = http.createServer(function(request,response){
 
             list = templateList(filelist);
 
-            var template = templateHTML(title, list, `<h2>${title}</h2>${description}`);
+            var template = templateHTML(title, list,
+              `<h2>${title}</h2>${description}`,
+              `<a href="/create">create</a>`
+            );
             response.writeHead(200);
             response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
           });
@@ -91,7 +94,16 @@ var app = http.createServer(function(request,response){
 
         fs.readFile(`data/${queryData.id}`, 'utf8', function(err, description){
           var title = queryData.id;
-          var template = templateHTML(title, list, `<h2>${title}</h2>${description}`);
+
+          var template = templateHTML(title, list,
+            `<h2>${title}</h2>${description}`,
+            `<a href="/create">create</a>
+            <a href="/update?id=${title}">update</a>
+            <form action="delete_process" method="post">
+              <input type="hidden" name="id" value="${title}">
+              <input type="submit" value="delete">
+            </form>`
+          );
           response.writeHead(200);
           response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
         });
@@ -105,14 +117,16 @@ var app = http.createServer(function(request,response){
       list = templateList(filelist);
 
       var template = templateHTML(title, list, `
-        <form action="http://localhost:3000/create_process" method="post">
+        <form action="/create_process" method="post">
         <p><input type="text" name="title" placeholder="tltle"></p>
 
         <p><textarea name="description" placeholder="description"></textarea></p>
 
         <p><input type="submit"></p>
         </form>
-        `);
+        `,
+        ''
+      );
       response.writeHead(200);
       response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
     });
@@ -143,6 +157,70 @@ var app = http.createServer(function(request,response){
     });
     // data와 end 같은 것들을 이벤트라고 한다
 
+  } else if (pathName === '/update') {
+    fs.readdir('./data', function(err, filelist){
+      list = templateList(filelist);
+
+      fs.readFile(`data/${queryData.id}`, 'utf8', function(err, description){
+        var title = queryData.id;
+        var template = templateHTML(title, list,
+          `
+          <form action="/update_process" method="post">
+          <input type="hidden" name="id" value="${title}">
+          <p><input type="text" name="title" placeholder="tltle" value="${title}"></p>
+
+          <p><textarea name="description" placeholder="description">${description}</textarea></p>
+
+          <p><input type="submit"></p>
+          </form>
+          `,
+          `<a href="/create">create</a> <a href="/update?id=${title}">update</a>`
+        );
+        response.writeHead(200);
+        response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
+      });
+    });
+
+  } else if (pathName === '/update_process') {
+    var body = '';
+    request.on('data', function(data){
+      body = body + data;
+    });
+
+    request.on('end', function(){
+      var post = qs.parse(body);
+      var id = post.id;
+      var title = post.title;
+      var description = post.description;
+
+      // rename으로 파일 이름 바꾸고 writeFile로 파일 내용 바꾼다
+      fs.rename(`data/${id}`, `data/${title}`, function(error){
+        fs.writeFile(`data/${title}`, description, 'utf8', function(err){
+          response.writeHead(302, {Location: `/?id=${title}`});
+          response.end();
+        })
+      });
+
+
+    });
+  } else if (pathName === '/delete_process') {
+    var body = '';
+    request.on('data', function(data){
+      body = body + data;
+    });
+
+    request.on('end', function(){
+      var post = qs.parse(body);
+      var id = post.id;
+
+      // 파일 삭제
+      fs.unlink(`data/${id}`, function(error){
+        response.writeHead(302, {Location: `/`});
+        response.end();
+      })
+
+
+    });
   } else { // 루트 경로 아닌 것은 에러 표시한다.
       response.writeHead(404);
       response.end('Not found');
