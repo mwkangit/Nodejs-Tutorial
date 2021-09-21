@@ -2,38 +2,11 @@ var http = require('http');
 var fs = require('fs');
 var url = require('url');
 var qs = require('querystring');
+var path = require('path')
+var sanitizeHtml = require('sanitize-html');
 
-function templateHTML(title, list, body, control){
-  return `
-<!doctype html>
-<html>
-<head>
-  <title>WEB1 - ${title}</title>
-  <meta charset="utf-8">
-</head>
-<body>
-  <h1><a href="/">WEB</a></h1>
-  ${list}
-  ${control}
-  ${body}
-</body>
-</html>
-  `;
-}
 
-function templateList(filelist){
-  var list = '<ul>';
-
-  var i = 0;
-  while(i < filelist.length){
-    list = list + `<li><a href="/?id=${filelist[i]}">${filelist[i]}</a></li>`;
-    i = i + 1;
-  }
-
-  list = list + '</ul>';
-
-  return list;
-}
+var template = require('./lib/template.js')
 
 var app = http.createServer(function(request,response){
     var _url = request.url; // request.url을 통해 현재 client가 http로 전송한 string query를 확인할 수 있다.
@@ -66,6 +39,7 @@ var app = http.createServer(function(request,response){
                         </ul>`
             */ // 이 내용을 프로그래밍적으로 만들어야 한다
 
+            /*
             list = templateList(filelist);
 
             var template = templateHTML(title, list,
@@ -75,7 +49,16 @@ var app = http.createServer(function(request,response){
             response.writeHead(200);
             response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
           });
+          */
+          list = template.List(filelist);
 
+          var html = template.HTML(title, list,
+            `<h2>${title}</h2>${description}`,
+            `<a href="/create">create</a>`
+          );
+          response.writeHead(200);
+          response.end(html); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
+        });
 
       // });
     } else {
@@ -90,22 +73,25 @@ var app = http.createServer(function(request,response){
                     </ul>`
         */ // 이 내용을 프로그래밍적으로 만들어야 한다
 
-        list = templateList(filelist);
-
-        fs.readFile(`data/${queryData.id}`, 'utf8', function(err, description){
+        list = template.List(filelist);
+        var filteredId = path.parse(queryData.id).base;
+        fs.readFile(`data/${filteredId}`, 'utf8', function(err, description){
           var title = queryData.id;
+          // 자신이 사용하는 변수 이름으로 살균되었는지 알 수 있다
+          var sanitizedTitle = sanitizeHtml(title);
+          var sanitizedDescription = sanitizeHtml(description);
 
-          var template = templateHTML(title, list,
-            `<h2>${title}</h2>${description}`,
+          var html = template.HTML(sanitizedTitle, list,
+            `<h2>${sanitizedTitle}</h2>${sanitizedDescription}`,
             `<a href="/create">create</a>
-            <a href="/update?id=${title}">update</a>
+            <a href="/update?id=${sanitizedTitle}">update</a>
             <form action="delete_process" method="post">
-              <input type="hidden" name="id" value="${title}">
+              <input type="hidden" name="id" value="${sanitizedTitle}">
               <input type="submit" value="delete">
             </form>`
           );
           response.writeHead(200);
-          response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
+          response.end(html); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
         });
       });
     }
@@ -114,9 +100,9 @@ var app = http.createServer(function(request,response){
 
       var title = 'WEB - create';
       var description = 'Hello, Node.js';
-      list = templateList(filelist);
+      list = template.List(filelist);
 
-      var template = templateHTML(title, list, `
+      var html = template.HTML(title, list, `
         <form action="/create_process" method="post">
         <p><input type="text" name="title" placeholder="tltle"></p>
 
@@ -128,7 +114,7 @@ var app = http.createServer(function(request,response){
         ''
       );
       response.writeHead(200);
-      response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
+      response.end(html); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
     });
   } else if(pathName === '/create_process'){
     var body = '';
@@ -159,11 +145,11 @@ var app = http.createServer(function(request,response){
 
   } else if (pathName === '/update') {
     fs.readdir('./data', function(err, filelist){
-      list = templateList(filelist);
-
-      fs.readFile(`data/${queryData.id}`, 'utf8', function(err, description){
+      list = template.List(filelist);
+      var filteredId = path.parse(queryData.id).base;
+      fs.readFile(`data/${filteredId}`, 'utf8', function(err, description){
         var title = queryData.id;
-        var template = templateHTML(title, list,
+        var html = template.HTML(title, list,
           `
           <form action="/update_process" method="post">
           <input type="hidden" name="id" value="${title}">
@@ -177,7 +163,7 @@ var app = http.createServer(function(request,response){
           `<a href="/create">create</a> <a href="/update?id=${title}">update</a>`
         );
         response.writeHead(200);
-        response.end(template); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
+        response.end(html); // client에서 보내는 query string 으로 명령을 새로 만들 수 있다.
       });
     });
 
@@ -214,7 +200,8 @@ var app = http.createServer(function(request,response){
       var id = post.id;
 
       // 파일 삭제
-      fs.unlink(`data/${id}`, function(error){
+      var filteredId = path.parse(id).base;
+      fs.unlink(`data/${filteredId}`, function(error){
         response.writeHead(302, {Location: `/`});
         response.end();
       })
@@ -228,9 +215,9 @@ var app = http.createServer(function(request,response){
 
 
 
-    console.log(pathName);
-    console.log(__dirname + _url);
-    console.log(queryData);
+    // console.log(pathName);
+    // console.log(__dirname + _url);
+    // console.log(queryData);
     // response.end(fs.readFileSync(__dirname + _url)); // 읽어들여야 하는 파일을 만들고 파일로부터 읽게 한다. Response.end 안에 위치해서 그 주소로가게한다. 사용자에게 전송하는 데이터를 바꿀수 있다. 아파치 못하고 나머지는 가능. 즉, 프로그래밍적으로 사용자에게 전송할 데이터를 생성한다.
 
 
